@@ -9,16 +9,22 @@ See `AGENTS.md` for the project's general test rules.
 
 ## Status
 
-- Implemented, tested, and **uncommitted** on `main`.
-- `go build ./...` and `go test ./internal/app` pass (2026-11-10).
+- Committed on the `furigana` branch (6510257), then merged with upstream
+  `origin/main` 0.1.25 (merge commit 7ebbf49, 2026-11-15).
+- `go build ./...` and `go test ./internal/...` pass, except the upstream
+  `TestPrevSkipsBack` below.
 - Japanese lyrics are now set in the app's Chinese font family, matching the
   Chinese and English lyrics; see “Ruby layout”.
-- Test build version: `mygo.config.ts` → `0.1.23-furigana.1` (semver prerelease).
+- Test build version: `mygo.config.ts` → `0.1.25-furigana.1` (semver prerelease).
   The app's plugin version parser treats this as non-numeric and skips
   `minAppVersion` checks, which is fine for a local fork.
+- Upstream 0.1.25 adds vinyl/cassette Now Playing players; its rewritten
+  cover layout (`npCoverTop`, `over-cover`/`under-controls`) is in place and
+  the furigana button in the tab row still sits above it.
 - Pre-existing failure unrelated to this work:
   `go test ./internal/player -run TestPrevSkipsBack` fails on this Windows
-  machine both before and after the change (5/5 reproductions).
+  machine on `origin/main` 0.1.25 alone too (reproduced 5/5 in a clean
+  worktree), so it is not from the merge.
 
 ## Build the Windows installer
 
