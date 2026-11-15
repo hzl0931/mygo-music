@@ -354,6 +354,21 @@ func (a *app) settingsSections(c *ui.Context, p palette) []settingsSection {
 				a.changed()
 			}
 		})
+		row(T("Now Playing Style"), T("Show the song playing as its cover, or as a record or a cassette turning as it plays"), func() {
+			labels := make([]string, len(playerStyles))
+			at := 0
+			for i, ps := range playerStyles {
+				labels[i] = ps.label
+				if ps.id == s.PlayerStyle {
+					at = i
+				}
+			}
+			if i, ok := choice(c, "player-style", T("Now Playing Style"), labels, at); ok {
+				s.PlayerStyle = playerStyles[i].id
+				a.changed()
+				go retroBitmaps() // rendered before Now Playing shows them
+			}
+		})
 		// Only on macOS: elsewhere the icon is always in the notification
 		// area.
 		if runtime.GOOS == "darwin" {
@@ -738,9 +753,12 @@ func (a *app) grantPrograms(lib *library, g guarded, on bool) {
 	}()
 }
 
-// sourceSetting is a text field for what a source asks of the listener. It's
-// kept as it's submitted, or as the focus leaves it.
+// sourceSetting draws the control a source asks for, falling back to a text
+// field saved on submission or blur for legacy or unsupported metadata.
 func (a *app) sourceSetting(c *ui.Context, lib *library, st music.Setting, p palette) {
+	if a.typedSourceSetting(c, lib, st, p) {
+		return
+	}
 	key := lib.id + "\x00" + st.Key
 	text := a.settingText[key]
 	if text == nil {
@@ -750,8 +768,8 @@ func (a *app) sourceSetting(c *ui.Context, lib *library, st music.Setting, p pal
 	}
 	ui.Column(c).Gap(4).Children(func() {
 		ui.Text(c, st.Label).FontSize(12.5).FontWeight(500)
-		in := ui.TextInput(c.Key("value"), text).Label(st.Label).FontSize(13)
-		if in.Submitted() || !in.Focused() && *text != lib.src.Setting(st.Key) {
+		in := ui.TextInput(c.Key("value"), text).AlignSelf(ui.Start).Width(320).MaxWidthPercent(100).Label(st.Label).FontSize(13)
+		if in.Submitted() || !in.Focused() && *text != a.pendingSetting(lib, st.Key) {
 			a.keepSetting(lib, st.Key, *text)
 		}
 		if st.Help != "" {
@@ -766,12 +784,56 @@ func (a *app) sourceSetting(c *ui.Context, lib *library, st music.Setting, p pal
 // keepSetting gives a source a setting, off the main thread, and loads anew
 // what it may now be able to show.
 func (a *app) keepSetting(lib *library, key, value string) {
-	if lib.src.Setting(key) == value {
+	a.saveSetting(lib, key, value, nil)
+}
+
+type settingWrite struct{ value string }
+
+// pendingSetting includes a queued edit, even before the source starts saving it.
+func (a *app) pendingSetting(lib *library, key string) string {
+	if pending := a.settingPending[lib.id+"\x00"+key]; pending != nil {
+		return pending.value
+	}
+	return lib.src.Setting(key)
+}
+
+// saveSetting runs completion on the main thread. Typed controls suppress
+// duplicate writes themselves and must be able to retry a failed persistence
+// or plugin callback even if SetSetting already changed the in-memory value.
+func (a *app) saveSetting(lib *library, key, value string, done func(error)) {
+	if done == nil && a.pendingSetting(lib, key) == value {
 		return
 	}
+	if a.settingPending == nil {
+		a.settingPending = map[string]*settingWrite{}
+	}
+	pendingKey := lib.id + "\x00" + key
+	pending := &settingWrite{value: value}
+	a.settingPending[pendingKey] = pending
+	// SetSetting persists the whole source map. Keep UI writes in initiation
+	// order so controls cannot race the same settings.json temporary file.
+	if a.settingSaves == nil {
+		a.settingSaves = map[*library]<-chan struct{}{}
+	}
+	previous := a.settingSaves[lib]
+	finished := make(chan struct{})
+	a.settingSaves[lib] = finished
 	go func() {
+		if previous != nil {
+			<-previous
+		}
 		err := lib.src.SetSetting(key, value)
+		close(finished)
 		a.post(func() {
+			if a.settingSaves[lib] == finished {
+				delete(a.settingSaves, lib)
+			}
+			if a.settingPending[pendingKey] == pending {
+				delete(a.settingPending, pendingKey)
+			}
+			if done != nil {
+				done(err)
+			}
 			if err != nil {
 				a.toast = Tf("Couldn't keep the setting: %s", err.Error())
 				return

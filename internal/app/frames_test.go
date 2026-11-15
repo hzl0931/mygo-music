@@ -196,3 +196,51 @@ func TestSettingsFrame(t *testing.T) {
 	settled(tt)
 	saveFrame(t, dir, "settings.png", tt.Image())
 }
+
+// With MM_FRAMES set, saves Now Playing with and without a radio: the
+// radio chip used to lift the cover almost against the tabs.
+func TestNowPlayingRadioFrames(t *testing.T) {
+	dir := framesDir(t)
+	for _, size := range [][2]int{{880, 580}, {900, 650}, {1200, 800}, {1400, 900}, {600, 1400}} {
+		for _, radio := range []bool{false, true} {
+			a := newTestApp()
+			a.pl.Cue(framesTracks(a))
+			a.pl.Hold(10 * time.Second)
+			if radio {
+				a.pl.AttachRadio(radioName("fake", &music.Station{ID: "station", Name: "Evening Radio"}), func(func([]music.Track)) {})
+			}
+			a.nowPlaying, a.npPane = true, paneQueue
+			tt := ui.NewTester(a.view, size[0], size[1])
+			tt.SetDark(true)
+			settled(tt)
+			tt.Move(float32(size[0])/2, 70)
+			settled(tt)
+			saveFrame(t, dir, fmt.Sprintf("np-radio-%t-%dx%d.png", radio, size[0], size[1]), tt.Image())
+		}
+	}
+}
+
+// With MM_FRAMES set, saves Now Playing in each retro player style, a third
+// of the way through a song, playing and paused.
+func TestRetroPlayerFrames(t *testing.T) {
+	dir := framesDir(t)
+	for _, style := range playerStyles[1:] {
+		for _, playing := range []bool{true, false} {
+			a := newTestApp()
+			a.settings.PlayerStyle = style.id
+			a.pl.Cue(framesTracks(a))
+			a.pl.SetLyrics(nil)
+			a.pl.Seek(60 * time.Second)
+			name := "retro-" + style.id + "-paused.png"
+			if playing {
+				a.pl.Hold(60 * time.Second)
+				name = "retro-" + style.id + ".png"
+			}
+			a.nowPlaying, a.npPane = true, paneQueue
+			tt := ui.NewTester(a.view, 1180, 780)
+			tt.SetDark(true)
+			settled(tt)
+			saveFrame(t, dir, name, tt.Image())
+		}
+	}
+}

@@ -2,6 +2,34 @@
 
 All notable changes to MyGo Music are written down here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [0.1.25] - 2026-11-14
+
+### Added
+
+- Settings > Now Playing Style lets you show a vinyl record or a cassette in Now Playing. The record and reels turn as the song plays, the tonearm lifts when paused, and both players can be tilted, dragged and flung like the cover.
+
+## [0.1.24] - 2026-11-11
+
+### Changed
+
+- Updated MyGo to v0.9.0.
+
+### Fixed
+
+- Windows releases now build on a native Windows runner.
+
+## [0.1.23] - 2026-11-11
+
+### Added
+
+- Plugins can ask for password fields, switches and select menus in their settings. Passwords are masked and saved explicitly; switches and selects save when changed. Existing plugins keep their text fields and string values.
+
+### Fixed
+
+- Scrolling over the volume control changes the volume by a consistent step per mouse-wheel event.
+- Now Playing's cover stays clear of the tabs while a radio plays.
+- Liked and Saved Albums use the titles the source gives them in its sidebar.
+
 ## [0.1.22] - 2026-11-07
 
 ### Fixed
@@ -219,6 +247,9 @@ All notable changes to MyGo Music are written down here. Versions follow [Semant
 
 The first release: a native music player that plays your local files and gets everything else from plugins.
 
+[0.1.25]: https://github.com/egoist/mygo-music/compare/v0.1.24...v0.1.25
+[0.1.24]: https://github.com/egoist/mygo-music/compare/v0.1.23...v0.1.24
+[0.1.23]: https://github.com/egoist/mygo-music/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/egoist/mygo-music/compare/v0.1.21...v0.1.22
 [0.1.21]: https://github.com/egoist/mygo-music/compare/v0.1.20...v0.1.21
 [0.1.20]: https://github.com/egoist/mygo-music/compare/v0.1.19...v0.1.20
