@@ -199,6 +199,7 @@ func (a *app) partitaLine(c *ui.Context, l *lyrics.Line, pos time.Duration, f, h
 	}
 	f *= 0.8
 	grow := 1 + 0.05*(1-fade)
+	ruby := l.HasRuby()
 	ui.Column(c.Key(l.At)).Absolute().Top(0).Left(0).Right(0).Bottom(0).Center().
 		Opacity(fade).Scale(grow, grow).PassThrough().Children(func() {
 		for ri, row := range rows {
@@ -228,7 +229,7 @@ func (a *app) partitaLine(c *ui.Context, l *lyrics.Line, pos time.Duration, f, h
 			widths := make([]float32, len(words))
 			seed := float64(words[0].Start/time.Millisecond) / 1000
 			for i, w := range words {
-				widths[i], _ = c.MeasureText(0, ui.Span{Text: w.Text, Size: f, Weight: 800})
+				widths[i] = rubyWidth(c, w, f, 800)
 				ws := seed + float64(i)*7.13
 				shapes[i] = wordShape{
 					x:      (lineRandom(ws, 1) - 0.5) * 12,
@@ -261,7 +262,7 @@ func (a *app) partitaLine(c *ui.Context, l *lyrics.Line, pos time.Duration, f, h
 				}).
 				Children(func() {
 					for i, w := range words {
-						a.stageWord(c.Key(i), w, shapes[i], pos, f, accent)
+						a.stageWord(c.Key(i), w, shapes[i], pos, f, accent, ruby)
 					}
 				})
 		}
@@ -368,13 +369,19 @@ func tiltLine(c *ui.Context, l *lyrics.Line, pos time.Duration, w, fade float32,
 	}
 	width := func(p tiltPart) float32 {
 		weight, spacing := style(p)
-		text := ""
-		for _, w := range l.Words[p.from:p.to] {
-			text += w.Text
+		var w float32
+		for i, word := range l.Words[p.from:p.to] {
+			text := word.Text
+			if i == 0 {
+				text = strings.TrimLeftFunc(text, unicode.IsSpace)
+			}
+			if i == p.to-p.from-1 {
+				text = strings.TrimRightFunc(text, unicode.IsSpace)
+			}
+			w += rubyWidth(c, lyrics.Word{Text: text, Ruby: word.Ruby}, size, weight)
+			w += float32(utf8.RuneCountInString(text)) * size * spacing
 		}
-		text = strings.TrimSpace(text)
-		tw, _ := c.MeasureText(0, ui.Span{Text: text, Size: size, Weight: weight})
-		return tw + float32(utf8.RuneCountInString(text))*size*spacing
+		return w
 	}
 	widest := func(parts []tiltPart) float32 {
 		m := float32(0)
@@ -411,52 +418,77 @@ func tiltPartView(c *ui.Context, words []lyrics.Word, part tiltPart, pos time.Du
 	} else if part.tail {
 		size *= 1.18
 	}
-	row := ui.Row(c).AlignItems(ui.Center).Translate(0, rise).Scale(scale, scale).Opacity(in)
+	ruby := false
+	for _, w := range words {
+		if w.Ruby != "" {
+			ruby = true
+			break
+		}
+	}
+	row := ui.Row(c)
+	if ruby {
+		row.AlignItems(ui.End)
+	} else {
+		row.AlignItems(ui.Center)
+	}
+	row.Translate(0, rise).Scale(scale, scale).Opacity(in)
 	row.Children(func() {
 		k := 0 // characters so far, not counting spaces
 		for wi, word := range words {
 			text := strings.TrimRightFunc(word.Text, unicode.IsSpace)
-			n := utf8.RuneCountInString(text)
-			each := (word.End - word.Start) / time.Duration(max(n, 1))
-			i := 0
-			for _, r := range text {
-				if unicode.IsSpace(r) {
-					ui.Box(c.Key([2]int{wi, i})).Width(size * gap)
-					i++
-					continue
-				}
-				// Swelling as it is sung, for at least a fifth of a second
-				// and at most nine tenths, then settling a little larger.
-				start := word.Start + time.Duration(i)*each
-				d := float32(min(max(each.Seconds(), 0.2), 0.9))
-				t := float32((pos - start).Seconds())
-				swell := float32(0)
-				switch {
-				case t < 0:
-				case t <= d:
-					swell = float32(math.Sin(float64(t / d * math.Pi)))
-				default:
-					swell = 0.25 * clamp01((t-d)/(d*1.2))
-				}
-				s := 1 + swell*pulse
-				shown := ease((since - float32(k)*stagger) / 0.5)
-				ch := ui.Text(c.Key([2]int{wi, i}), string(r)).FontSize(size).FontWeight(weight).NoWrap().
-					TextColor(color).MarginEnd(size*spacing).Opacity(shown).Scale(s, s)
-				if part.lean {
-					// Up and down by turns, from twice as far.
-					y := size / 6 * (2 - shown)
-					if k%2 == 0 {
-						y = -y
+			wordShown := ease((since - float32(k)*stagger) / 0.5)
+			drawWord := func() {
+				n := utf8.RuneCountInString(text)
+				each := (word.End - word.Start) / time.Duration(max(n, 1))
+				i := 0
+				for _, r := range text {
+					if unicode.IsSpace(r) {
+						ui.Box(c.Key([2]int{wi, i})).Width(size * gap)
+						i++
+						continue
 					}
-					ch.Italic().LineHeight(1.25).Translate(0, y)
-				} else {
-					ch.LineHeight(1.35)
+					// Swelling as it is sung, for at least a fifth of a second
+					// and at most nine tenths, then settling a little larger.
+					start := word.Start + time.Duration(i)*each
+					d := float32(min(max(each.Seconds(), 0.2), 0.9))
+					t := float32((pos - start).Seconds())
+					swell := float32(0)
+					switch {
+					case t < 0:
+					case t <= d:
+						swell = float32(math.Sin(float64(t / d * math.Pi)))
+					default:
+						swell = 0.25 * clamp01((t-d)/(d*1.2))
+					}
+					s := 1 + swell*pulse
+					shown := ease((since - float32(k)*stagger) / 0.5)
+					ch := ui.Text(c.Key([2]int{wi, i}), string(r)).FontSize(size).FontWeight(weight).NoWrap().
+						TextColor(color).MarginEnd(size*spacing).Opacity(shown).Scale(s, s)
+					if part.lean {
+						// Up and down by turns, from twice as far.
+						y := size / 6 * (2 - shown)
+						if k%2 == 0 {
+							y = -y
+						}
+						ch.Italic().LineHeight(1.25).Translate(0, y)
+					} else {
+						ch.LineHeight(1.35)
+					}
+					if sparks && i == 0 {
+						stageSparks(ch, t, float64(word.Start/time.Millisecond), last && wi == len(words)-1, accent)
+					}
+					i++
+					k++
 				}
-				if sparks && i == 0 {
-					stageSparks(ch, t, float64(word.Start/time.Millisecond), last && wi == len(words)-1, accent)
-				}
-				i++
-				k++
+			}
+			if word.Ruby != "" {
+				ui.Column(c.Key([2]int{wi, -2})).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, word.Ruby).FontSize(size * 0.38).FontWeight(weight).LineHeight(1).NoWrap().
+						TextColor(color.Alpha(0.75)).AccessHidden(true).Opacity(wordShown)
+					ui.Row(c).AlignItems(ui.End).Children(drawWord)
+				})
+			} else {
+				drawWord()
 			}
 			if text != word.Text && wi < len(words)-1 {
 				ui.Box(c.Key([2]int{wi, -1})).Width(size * gap)

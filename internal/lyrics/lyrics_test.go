@@ -1,6 +1,7 @@
 package lyrics
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -33,11 +34,30 @@ func TestSpreadWords(t *testing.T) {
 	for _, x := range w {
 		got = append(got, x.Text)
 	}
-	if len(w) != 4 || got[0] != "我" || got[1] != "爱" || got[2] != "you " || got[3] != "all" {
+	if len(w) != 4 || got[0] != "我" || got[1] != "爱 " || got[2] != "you " || got[3] != "all" {
 		t.Fatalf("words %q", got)
 	}
 	if w[0].Start != 0 || w[3].End > 10*time.Second || w[1].Start != w[0].End {
 		t.Errorf("times %+v", w)
+	}
+}
+
+// Spaces in a line stay in its words, even after Japanese cut one character
+// at a time, so that readings can be laid over it.
+func TestSpreadWordsKeepsSpaces(t *testing.T) {
+	for _, text := range []string{
+		"まだ待ってる 生きる意味を",
+		"存在証明 見つけたい",
+		"ただ 探究して！",
+		"  空  ",
+	} {
+		var b strings.Builder
+		for _, w := range SpreadWords(text, 0, 10*time.Second) {
+			b.WriteString(w.Text)
+		}
+		if b.String() != text {
+			t.Errorf("%q: words spell %q", text, b.String())
+		}
 	}
 }
 

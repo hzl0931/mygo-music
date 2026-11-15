@@ -180,9 +180,16 @@ func (a *app) wallSong(c *ui.Context, tr *music.Track, art *artwork, top, h floa
 				sung = lines[cur].Text
 			}
 			lang := lyrics.Lang(lines)
-			ui.Text(c, sung).Lang(lang).FontSize(17).FontWeight(700).TextColor(white.Alpha(0.85)).MaxLines(2).Margin(14, 0, 0, 0)
+			fam := lyricsFamily(lang)
+			sungText := ui.Text(c, sung).Lang(lang).FontSize(17).FontWeight(700).TextColor(white.Alpha(0.85)).MaxLines(2).Margin(14, 0, 0, 0)
+			if fam != "" {
+				sungText.Font(fam)
+			}
 			if cur+1 < len(lines) {
-				ui.Text(c, lines[cur+1].Text).Lang(lang).FontSize(14).FontWeight(600).TextColor(white.Alpha(0.38)).SingleLine()
+				nextText := ui.Text(c, lines[cur+1].Text).Lang(lang).FontSize(14).FontWeight(600).TextColor(white.Alpha(0.38)).SingleLine()
+				if fam != "" {
+					nextText.Font(fam)
+				}
 			}
 		})
 	})

@@ -62,6 +62,9 @@ type settings struct {
 	// StageSparks throws sparks off each word on the stage as it is sung,
 	// whatever its style.
 	StageSparks bool `json:"stageSparks,omitempty"`
+	// FuriganaOff hides the readings over the kanji of Japanese lyrics, in
+	// the lyrics pane and on the stage. They show until it says otherwise.
+	FuriganaOff bool `json:"furiganaOff,omitempty"`
 	// Volume is where the volume was left, from 0 to 1.
 	Volume float64 `json:"volume"`
 	// Normalize evens out the loudness of tracks, by what their source

@@ -7,6 +7,7 @@ A native desktop music player written in Go with [MyGo](https://github.com/egois
 - Local files (MP3, FLAC, Ogg Vorbis, WAV, and ALAC, FLAC or AAC in .m4a and .aac) with tags, covers and `.lrc` lyrics
 - Playlists, liked songs, search, albums and artists
 - Now Playing with lyric stage styles, cover wall, queue, shuffle and repeat
+- Furigana over the kanji of Japanese lyrics, in the lyrics pane and on the stage, with a button to hide them
 - Notch player on macOS, tray, media keys
 - Audio cache, fades on pause and seek, loudness normalization
 - Session restore
@@ -179,6 +180,7 @@ Everything else takes a permission in `plugin.json`:
 ## Credits
 
 - [folia-major](https://github.com/chthollyphile/folia-major): the lyric stage animations
+- [kagome](https://github.com/ikawaha/kagome): the Japanese readings over lyrics, with its IPA dictionary
 
 ## License
 

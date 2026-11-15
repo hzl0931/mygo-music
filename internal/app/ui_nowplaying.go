@@ -325,6 +325,7 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *music.Track, art *artwork, accen
 			// controls a slim bar at the foot.
 			a.npRise(reveal(npTabsRow(c, w), pointerIn), 0).Children(func() {
 				a.paneTabs(c)
+				a.furiganaButton(c)
 				a.stageStyleButton(c)
 			})
 			a.stage(c, tr, accent)
@@ -351,7 +352,12 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *music.Track, art *artwork, accen
 		// the controls.
 		side = max(coverSize, 280)
 		padX := npSideX(w)
-		a.npRise(reveal(npTabsRow(c, w), pointerIn), 0).Children(func() { a.paneTabs(c) })
+		a.npRise(reveal(npTabsRow(c, w), pointerIn), 0).Children(func() {
+			a.paneTabs(c)
+			if a.npPane == paneLyrics {
+				a.furiganaButton(c)
+			}
+		})
 		ui.Row(c).Grow(1).Padding(0, padX, 44, padX).Gap(72).AlignItems(ui.Stretch).Children(func() {
 			var coverTop float32
 			ui.Column(c).Width(side).Justify(ui.Center).Gap(0).Children(func() {
@@ -618,6 +624,7 @@ func (a *app) paneTab(c *ui.Context, i int, label string) {
 func (a *app) lyricsPane(c *ui.Context, tr *music.Track, h float32) {
 	pl := a.pl
 	lines, loaded := pl.Lyrics()
+	lines = a.furiganaLines(tr, lines)
 	if len(lines) == 0 {
 		col := ui.Column(c).Grow(1)
 		if loaded {
@@ -707,19 +714,47 @@ func (a *app) timedLines(c *ui.Context, scroll ui.Element, lines []lyrics.Line, 
 					text.AnimatePose(ui.Pose{Fade: 1 - alpha}, ui.Animation{Duration: 380 * time.Millisecond})
 					text.Children(func() {
 						if on && len(l.Words) > 0 {
-							// The line sung lights up word by word as it is sung.
-							ui.RichText(c.Key("words")).Lang(lang).FontSize(st.size).FontWeight(st.weight).LineHeight(st.lineHeight).LetterSpacing(-0.4).Children(func() {
+							if l.HasRuby() {
+								// The line sung lights up word by word as it is sung,
+								// its readings with it.
+								ui.Row(c.Key("words")).Wrap().AlignSelf(ui.Stretch).AlignItems(ui.End).Children(func() {
+									for wi, wd := range l.Words {
+										lit := clamp01(float32((pos - wd.Start).Seconds() / max(0.05, (wd.End-wd.Start).Seconds())))
+										a.rubyWord(c.Key(wi), wd, st, white.Alpha(0.38+0.62*lit), lang)
+									}
+								})
+								if pl.Playing() {
+									// Words brighten smoothly enough at 25 frames a second.
+									c.After(40 * time.Millisecond)
+								}
+							} else {
+								// The line sung lights up word by word as it is sung.
+								words := ui.RichText(c.Key("words")).Lang(lang).FontSize(st.size).FontWeight(st.weight).LineHeight(st.lineHeight).LetterSpacing(-0.4)
+								if fam := lyricsFamily(lang); fam != "" {
+									words.Font(fam)
+								}
+								words.Children(func() {
+									for wi, wd := range l.Words {
+										lit := clamp01(float32((pos - wd.Start).Seconds() / max(0.05, (wd.End-wd.Start).Seconds())))
+										ui.Text(c.Key(wi), wd.Text).TextColor(white.Alpha(0.38 + 0.62*lit))
+									}
+								})
+								if pl.Playing() {
+									// Words brighten smoothly enough at 25 frames a second.
+									c.After(40 * time.Millisecond)
+								}
+							}
+						} else if l.HasRuby() {
+							ui.Row(c.Key("words")).Wrap().AlignSelf(ui.Stretch).AlignItems(ui.End).Children(func() {
 								for wi, wd := range l.Words {
-									lit := clamp01(float32((pos - wd.Start).Seconds() / max(0.05, (wd.End-wd.Start).Seconds())))
-									ui.Text(c.Key(wi), wd.Text).TextColor(white.Alpha(0.38 + 0.62*lit))
+									a.rubyWord(c.Key(wi), wd, st, white, lang)
 								}
 							})
-							if pl.Playing() {
-								// Words brighten smoothly enough at 25 frames a second.
-								c.After(40 * time.Millisecond)
-							}
 						} else {
-							ui.Text(c, l.Text).Lang(lang).FontSize(st.size).FontWeight(st.weight).LineHeight(st.lineHeight).LetterSpacing(-0.4).TextColor(white)
+							plain := ui.Text(c, l.Text).Lang(lang).FontSize(st.size).FontWeight(st.weight).LineHeight(st.lineHeight).LetterSpacing(-0.4).TextColor(white)
+							if fam := lyricsFamily(lang); fam != "" {
+								plain.Font(fam)
+							}
 						}
 						if l.Translation != "" {
 							ui.Text(c, l.Translation).FontSize(17).FontWeight(600).TextColor(white.Alpha(0.7))

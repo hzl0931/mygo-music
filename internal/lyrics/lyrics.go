@@ -2,6 +2,7 @@ package lyrics
 
 import (
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,7 +27,126 @@ type Line struct {
 // with when it is sung.
 type Word struct {
 	Text       string
+	Ruby       string // its reading in hiragana, for a word of Japanese with kanji
 	Start, End time.Duration
+}
+
+// A RubySpan is a reading over a run of a line's text: its runes from
+// Start to End, End not included.
+type RubySpan struct {
+	Start, End int
+	Reading    string
+}
+
+// HasRuby reports whether any of the line's words has a reading.
+func (l Line) HasRuby() bool {
+	for _, w := range l.Words {
+		if w.Ruby != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// ApplyRuby returns lines with their readings over their words. Each line's
+// spans are rune offsets into its text, those that don't fit or overlap one
+// another left out. A span over several words makes them one word, timed from
+// the first to the last; a span over part of a word keeps its time in share.
+func ApplyRuby(lines []Line, spans [][]RubySpan) []Line {
+	out := slices.Clone(lines)
+	for i := range out {
+		var read []RubySpan
+		if i < len(spans) {
+			read = spans[i]
+		}
+		if words, ok := rubyWords(out[i], read); ok {
+			out[i].Words = words
+			continue
+		}
+		// A source's words that don't spell its text are no guide: lay the
+		// readings over the text itself, timed as a line without words is.
+		if len(read) == 0 {
+			continue
+		}
+		fallback := out[i]
+		fallback.Words = SpreadWords(out[i].Text, out[i].At, out[i].End)
+		if words, ok := rubyWords(fallback, read); ok {
+			out[i].Words = words
+		}
+	}
+	return out
+}
+
+// rubyWords lays spans over a line's words, and says whether it could: spans
+// whose runes don't line up with the words' text are left out whole, as the
+// line's words are not the text the spans came from.
+func rubyWords(line Line, spans []RubySpan) ([]Word, bool) {
+	type runeAt struct {
+		r          rune
+		word       int
+		start, end time.Duration
+		span       int // into readings, or -1 for none
+	}
+	var runes []runeAt
+	var text strings.Builder
+	for wi, w := range line.Words {
+		n := utf8.RuneCountInString(w.Text)
+		if n == 0 {
+			continue
+		}
+		d := w.End - w.Start
+		if d < 0 {
+			d = 0
+		}
+		j := 0
+		for _, r := range w.Text {
+			start := w.Start + time.Duration(int64(d)*int64(j)/int64(n))
+			end := w.Start + time.Duration(int64(d)*int64(j+1)/int64(n))
+			runes = append(runes, runeAt{r: r, word: wi, start: start, end: end, span: -1})
+			text.WriteRune(r)
+			j++
+		}
+	}
+	if text.String() != line.Text || len(runes) == 0 {
+		return nil, false
+	}
+	sorted := slices.Clone(spans)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Start < sorted[j].Start })
+	var readings []string
+	last := 0
+	for _, s := range sorted {
+		if s.Start < last || s.Start < 0 || s.Start >= s.End || s.End > len(runes) || s.Reading == "" {
+			continue
+		}
+		for k := s.Start; k < s.End; k++ {
+			runes[k].span = len(readings)
+		}
+		readings = append(readings, s.Reading)
+		last = s.End
+	}
+	var words []Word
+	for i := 0; i < len(runes); {
+		j := i + 1
+		word := Word{Start: runes[i].start}
+		if sp := runes[i].span; sp >= 0 {
+			for j < len(runes) && runes[j].span == sp {
+				j++
+			}
+			word.Ruby = readings[sp]
+		} else {
+			for j < len(runes) && runes[j].span < 0 && runes[j].word == runes[i].word {
+				j++
+			}
+		}
+		var b strings.Builder
+		for _, r := range runes[i:j] {
+			b.WriteRune(r.r)
+		}
+		word.Text, word.End = b.String(), runes[j-1].end
+		words = append(words, word)
+		i = j
+	}
+	return words, true
 }
 
 var lrcTime = regexp.MustCompile(`\[(\d+):(\d+)(?:[.:](\d+))?\]`)
@@ -147,7 +267,8 @@ func Build(lrc, translation string) []Line {
 
 // SpreadWords splits text into words, each Chinese, Japanese or Korean
 // character one of them, and shares the time from start to end among them
-// by their lengths, for lines whose words have no times of their own.
+// by their lengths, for lines whose words have no times of their own. A
+// space stays with the word before it, so that the words still spell the text.
 func SpreadWords(text string, start, end time.Duration) []Word {
 	var words []string
 	var cur strings.Builder
@@ -160,8 +281,13 @@ func SpreadWords(text string, start, end time.Duration) []Word {
 	for _, r := range text {
 		switch {
 		case unicode.IsSpace(r):
-			if cur.Len() > 0 {
-				cur.WriteRune(' ')
+			// A space after a character that is already a word of its own,
+			// as Japanese is cut, stays with it: the words must still spell
+			// the text, spaces and all.
+			if cur.Len() == 0 && len(words) > 0 {
+				words[len(words)-1] += string(r)
+			} else {
+				cur.WriteRune(r)
 				flush()
 			}
 		case isCJK(r):

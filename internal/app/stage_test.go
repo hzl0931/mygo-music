@@ -88,6 +88,36 @@ func TestTimedLyricsReachTheStage(t *testing.T) {
 	}
 }
 
+// The line's translation and the line next sit over the lyrics, above the
+// stage's bar, not down on its controls: the sung layer was made outside the
+// stage, so its foot was the window's, right where the bar is.
+func TestStageTranslationStaysAboveTheBar(t *testing.T) {
+	a := newTestApp()
+	a.pl.Cue([]music.Track{song("1", "宝船", "DOUDOU")})
+	a.pl.SetLyrics([]lyrics.Line{
+		{At: 0, End: 5 * time.Second, Text: "第一条", Translation: "第一句的翻译"},
+		{At: 5 * time.Second, End: 10 * time.Second, Text: "第二条"},
+	})
+	a.pl.Hold(time.Second)
+	a.settings.LyricsStage = true
+	a.nowPlaying, a.npPane = true, paneStage
+	tt := ui.NewTester(a.view, 1180, 780)
+	settled(tt)
+	title, ok := tt.Find("宝船")
+	if !ok {
+		t.Fatalf("no song in the bar: %q", tt.Texts())
+	}
+	for _, what := range []string{"第一句的翻译", "第二条"} {
+		r, ok := tt.Find(what)
+		if !ok {
+			t.Fatalf("no %q on the stage: %q", what, tt.Texts())
+		}
+		if r.Y+r.H > title.Y {
+			t.Errorf("%q at %v..%v is down on the bar, whose song is at %v", what, r.Y, r.Y+r.H, title.Y)
+		}
+	}
+}
+
 func words(texts ...string) []lyrics.Word {
 	out := make([]lyrics.Word, len(texts))
 	for i, s := range texts {

@@ -56,7 +56,7 @@ func stageShapes(c *ui.Context, l *lyrics.Line, f float32) []wordShape {
 	shapes := make([]wordShape, len(l.Words))
 	widths := make([]float32, len(l.Words))
 	for i, w := range l.Words {
-		widths[i], _ = c.MeasureText(0, ui.Span{Text: w.Text, Size: f, Weight: 800})
+		widths[i] = rubyWidth(c, w, f, 800)
 	}
 	for i := range l.Words {
 		ws := seed + float64(i)
@@ -94,6 +94,7 @@ func spaceWords(shapes []wordShape, widths []float32, gap float32) {
 func (a *app) stage(c *ui.Context, tr *music.Track, accent ui.Color) {
 	pl := a.pl
 	lines, loaded := pl.Lyrics()
+	lines = a.furiganaLines(tr, lines)
 	w, h := c.Size()
 	f := min(64, max(36, w*0.045))
 	box := ui.Box(c.Key("stage")).Grow(1)
@@ -127,12 +128,16 @@ func (a *app) stage(c *ui.Context, tr *music.Track, accent ui.Color) {
 		stageNextFrame(c, lines, cur, pos, lead)
 	}
 
-	// Japanese lyrics are drawn in a Japanese font, kanji and kana alike;
-	// their translations in the app's language.
+	// Japanese lyrics are drawn in the app's Chinese font, kanji and kana
+	// alike; their translations in the app's language and font.
 	lang := lyrics.Lang(lines)
 	box.Children(func() {
 		defer a.stageQuiet(c, dim, f, w)
-		quietUnder(ui.Box(c.Key("sung")).Lang(lang).Absolute().Top(0).Left(0).Right(0).Bottom(0).PassThrough(), dim).Children(func() {
+		sung := ui.Box(c.Key("sung")).Lang(lang).Absolute().Top(0).Left(0).Right(0).Bottom(0).PassThrough()
+		if fam := lyricsFamily(lang); fam != "" {
+			sung.Font(fam)
+		}
+		quietUnder(sung, dim).Children(func() {
 			// The line before goes as the new one comes.
 			if cur > 0 {
 				gone := float32((pos - lines[cur].At).Seconds()) / 0.4
@@ -153,7 +158,10 @@ func (a *app) stage(c *ui.Context, tr *music.Track, accent ui.Color) {
 			// The translation, and the line coming next, along the foot.
 			ui.Column(c).Absolute().Left(0).Right(0).Bottom(24).AlignItems(ui.Center).Gap(8).PassThrough().Children(func() {
 				if cur >= 0 && lines[cur].Translation != "" {
-					ui.Text(c.Key("translation"), lines[cur].Translation).Lang(c.Locale()).FontSize(18).FontWeight(600).TextColor(white.Alpha(0.72)).TextAlign(ui.Center)
+					tline := ui.Text(c.Key("translation"), lines[cur].Translation).Lang(c.Locale()).FontSize(18).FontWeight(600).TextColor(white.Alpha(0.72)).TextAlign(ui.Center)
+					if lyricsFamily(lang) != "" {
+						tline.Font("")
+					}
 				}
 				if cur+1 < len(lines) {
 					ui.Text(c.Key("next"), lines[cur+1].Text).FontSize(14).TextColor(white.Alpha(0.32)).TextAlign(ui.Center).SingleLine()
@@ -210,6 +218,7 @@ func (a *app) stageLine(c *ui.Context, l *lyrics.Line, pos time.Duration, f, w, 
 	}
 	seed := float64(l.At / time.Millisecond)
 	shapes := stageShapes(c, l, f)
+	ruby := l.HasRuby()
 	// Where the line sits: to one side or the middle, a little up or down.
 	justify := []ui.Align{ui.Start, ui.Center, ui.End}[int(seed)%3]
 	lift := []float32{-0.14, 0, 0.12}[int(seed*2)%3] * h
@@ -218,14 +227,14 @@ func (a *app) stageLine(c *ui.Context, l *lyrics.Line, pos time.Duration, f, w, 
 		Wrap().Justify(justify).AlignContent(ui.Center).AlignItems(ui.Center).Translate(0, lift).
 		Opacity(fade).PassThrough().Children(func() {
 		for i, word := range l.Words {
-			a.stageWord(c.Key(i), word, shapes[i], pos, f, accent)
+			a.stageWord(c.Key(i), word, shapes[i], pos, f, accent, ruby)
 		}
 	})
 }
 
 // stageWord shows a word as it is at pos: waiting to be sung, being sung,
 // or sung.
-func (a *app) stageWord(c *ui.Context, word lyrics.Word, s wordShape, pos time.Duration, f float32, accent ui.Color) {
+func (a *app) stageWord(c *ui.Context, word lyrics.Word, s wordShape, pos time.Duration, f float32, accent ui.Color, ruby bool) {
 	const lookahead = 80 * time.Millisecond
 	start := word.Start - lookahead
 	end := max(word.End, word.Start+150*time.Millisecond)
@@ -261,14 +270,24 @@ func (a *app) stageWord(c *ui.Context, word lyrics.Word, s wordShape, pos time.D
 
 	box := ui.Box(c).MarginEnd(s.margin).Translate(x, y).Rotate(rotate).Scale(scale, scale).Opacity(opacity)
 	box.Children(func() {
-		text := ui.Text(c.Key("body"), word.Text).FontSize(f).FontWeight(800).NoWrap().TextColor(color)
-		if blur > 0.3 {
-			text.Blur(blur)
+		if ruby {
+			rubyColumn(c.Key("body"), word, rubyStyle{size: f, weight: 800, color: color, reading: color.Alpha(0.78), blur: blur})
+		} else {
+			text := ui.Text(c.Key("body"), word.Text).FontSize(f).FontWeight(800).NoWrap().TextColor(color)
+			if blur > 0.3 {
+				text.Blur(blur)
+			}
 		}
 		if glow > 0.01 {
 			// The glow: the word again, in light, blurred around it.
-			ui.Text(c.Key("glow"), word.Text).Absolute().Top(0).Left(0).FontSize(f).FontWeight(800).NoWrap().
-				TextColor(accent.Alpha(0.85 * glow)).Blur(f * 0.2).PassThrough()
+			gl := ui.Column(c.Key("glow")).Absolute().Top(0).Left(0).Right(0).AlignItems(ui.Center).PassThrough()
+			gl.Children(func() {
+				if ruby {
+					ui.Box(c).Height(rubyHeight(f))
+				}
+				ui.Text(c, word.Text).FontSize(f).FontWeight(800).NoWrap().
+					TextColor(accent.Alpha(0.85 * glow)).Blur(f * 0.2).PassThrough()
+			})
 		}
 	})
 	if a.settings.StageSparks {
