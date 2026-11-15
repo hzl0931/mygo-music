@@ -29,7 +29,7 @@ installer.
 - `build/windows-amd64/MyGo Music.exe` — the portable app.
 - `build/SHA256SUMS` — checksums written by `mygo build`.
 
-The version comes from `mygo.config.ts` (`0.1.23-furigana.1` at the time of
+The version comes from `mygo.config.ts` (`0.1.25-furigana.1` at the time of
 writing). Do not bump it unless the user asks.
 
 ## Requirements and caveats
