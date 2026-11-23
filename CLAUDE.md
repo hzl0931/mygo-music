@@ -9,8 +9,8 @@ See `AGENTS.md` for the project's general test rules.
 
 ## Status
 
-- Committed on the `furigana` branch (6510257), then merged with upstream
-  `origin/main` 0.1.25 (merge commit 7ebbf49, 2026-11-15).
+- `personal` is the base branch, holding the furigana work (commit 6510257),
+  then merged with `upstream/main` 0.1.25 (merge commit 7ebbf49, 2026-11-15).
 - `go build ./...` and `go test ./internal/...` pass, except the upstream
   `TestPrevSkipsBack` below.
 - Japanese lyrics are now set in the app's Chinese font family, matching the
@@ -23,8 +23,18 @@ See `AGENTS.md` for the project's general test rules.
   the furigana button in the tab row still sits above it.
 - Pre-existing failure unrelated to this work:
   `go test ./internal/player -run TestPrevSkipsBack` fails on this Windows
-  machine on `origin/main` 0.1.25 alone too (reproduced 5/5 in a clean
+  machine on `upstream/main` 0.1.25 alone too (reproduced 5/5 in a clean
   worktree), so it is not from the merge.
+
+## Branches
+
+- `personal` is the base branch and the fork's product line: all custom work
+  lands here. Features branch from it and return with `git merge --no-ff`.
+- `main` mirrors `upstream/main` and takes no commits of its own.
+- Sync upstream by fetching `upstream`, merging `upstream/main` into
+  `personal`, and fast-forwarding `main`. Test locally with
+  `go build -o /dev/null .` and `go test ./internal/...`: pushes to
+  `personal` do not trigger the GitHub test workflow.
 
 ## Build the Windows installer
 
